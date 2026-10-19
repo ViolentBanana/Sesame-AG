@@ -18,13 +18,16 @@ import io.github.aoguai.sesameag.model.Model
 import io.github.aoguai.sesameag.task.antFarm.AntFarm
 import io.github.aoguai.sesameag.task.antForest.AntForest
 import io.github.aoguai.sesameag.task.antMember.AntMember
+import io.github.aoguai.sesameag.task.antMember.refreshBillCoinOptionsForRemote
 import io.github.aoguai.sesameag.task.antSesameCredit.AntSesameCredit
 import io.github.aoguai.sesameag.task.antSports.AntSports
 import io.github.aoguai.sesameag.task.customTasks.CustomTask
 import io.github.aoguai.sesameag.task.customTasks.ManualTask
 import io.github.aoguai.sesameag.task.customTasks.ManualTaskModel
 import io.github.aoguai.sesameag.task.exchange.ExchangeFetchProgress
+import io.github.aoguai.sesameag.task.goldenBean.GoldenBeanTreasure
 import io.github.aoguai.sesameag.task.myBankWelfare.MyBankWelfare
+import io.github.aoguai.sesameag.task.reserve.Reserve
 import io.github.aoguai.sesameag.util.GlobalThreadPools.execute
 import io.github.aoguai.sesameag.util.CommandUtil
 import io.github.aoguai.sesameag.util.JsonUtil
@@ -95,9 +98,15 @@ internal object ApplicationBroadcastDispatcher {
         val safeIntent = Intent(intent)
         ApplicationHookConstants.submitEntry("broadcast_restart") {
             val targetUserId = safeIntent.getStringExtra("userId")
-            val currentUserId = HookUtil.getUserId(ApplicationHook.classLoader!!)
+            val receiver = safeIntent.getParcelableExtra<android.os.ResultReceiver>("configReloadResult")
+            val reply: (String) -> Unit = { message ->
+                runCatching { receiver?.send(0, android.os.Bundle().apply { putString("message", message) }) }
+                    .onFailure { record(TAG, "配置重载回执发送失败: ${it.message}") }
+            }
+            val currentUserId = ApplicationHook.classLoader?.let { HookUtil.getUserId(it) }
             if (targetUserId != null && targetUserId != currentUserId) {
                 record(TAG, "忽略非当前用户的重启广播: target=$targetUserId, current=$currentUserId")
+                reply("设置已保存，切换到该账号后生效")
                 return@submitEntry
             }
             val restartReason =
@@ -106,7 +115,14 @@ internal object ApplicationBroadcastDispatcher {
                 } else {
                     "broadcast_restart"
                 }
-            ApplicationHook.restartWorkflow(restartReason)
+            ApplicationHook.restartWorkflow(restartReason) { completed ->
+                val activeUserId = ApplicationHook.classLoader?.let { HookUtil.getUserId(it) }
+                reply(when {
+                    targetUserId != activeUserId -> "设置已保存，切换到该账号后生效"
+                    completed && io.github.aoguai.sesameag.data.Config.isLoadedFor(targetUserId) -> "设置已保存并生效"
+                    else -> "设置已保存，尚未确认运行态，请在支付宝中重新加载配置"
+                })
+            }
         }
     }
 
@@ -595,7 +611,12 @@ internal object ApplicationBroadcastDispatcher {
                             ?: error("会员模块未初始化")
                     }
 
-                    ExchangeOptionsRefreshBridge.TARGET_BEAN_RIGHT -> {
+                    ExchangeOptionsRefreshBridge.TARGET_BILL_COIN -> {
+                    Model.getModel(AntMember::class.java)?.refreshBillCoinOptionsForRemote(forceRefresh)
+                        ?: error("会员模块未初始化")
+                }
+
+                ExchangeOptionsRefreshBridge.TARGET_BEAN_RIGHT -> {
                         Model.getModel(AntMember::class.java)?.refreshBeanExchangeRightOptionsForRemote(forceRefresh)
                             ?: error("会员模块未初始化")
                     }
@@ -618,6 +639,15 @@ internal object ApplicationBroadcastDispatcher {
                     ExchangeOptionsRefreshBridge.TARGET_FOREST_VITALITY -> {
                         Model.getModel(AntForest::class.java)?.refreshVitalityExchangeOptionsForRemote(forceRefresh)
                             ?: error("森林模块未初始化")
+                    }
+
+                    ExchangeOptionsRefreshBridge.TARGET_RESERVE -> {
+                        Reserve.initReserve(forceRefresh)
+                    }
+
+                    ExchangeOptionsRefreshBridge.TARGET_GOLDEN_BEAN_MALL -> {
+                        Model.getModel(GoldenBeanTreasure::class.java)?.refreshGoldenBeanMallOptionsForRemote(forceRefresh)
+                            ?: error("金豆夺宝模块未初始化")
                     }
 
                     ExchangeOptionsRefreshBridge.TARGET_SESAME_GRAIN -> {
@@ -714,8 +744,7 @@ internal object ApplicationBroadcastDispatcher {
                         CustomTask.ECO_PROTECTION,
                         CustomTask.GREEN_FINANCE,
                         CustomTask.MY_BANK_WELFARE,
-                        CustomTask.RESERVE,
-                        CustomTask.OTHER_TASK -> {
+                        CustomTask.RESERVE -> {
                             Unit
                         }
 

@@ -2,7 +2,12 @@ package io.github.aoguai.sesameag.task.antFarm
 
 import io.github.aoguai.sesameag.hook.RequestManager
 import io.github.aoguai.sesameag.hook.RequestManager.requestString
+import io.github.aoguai.sesameag.task.common.DeferredReason
+import io.github.aoguai.sesameag.task.common.TaskFlowActionResult
+import io.github.aoguai.sesameag.task.common.TaskRpcFailureType
+import io.github.aoguai.sesameag.util.JsonUtil
 import io.github.aoguai.sesameag.util.Log
+import io.github.aoguai.sesameag.util.ResChecker
 import io.github.aoguai.sesameag.util.RandomUtil.nextInt
 import org.json.JSONArray
 import org.json.JSONException
@@ -709,18 +714,50 @@ object AntFarmRpcCall {
     // 日常任务
     @JvmStatic
     @JvmOverloads
-    fun doFarmTask(bizKey: String?, taskSceneCode: String? = null): String =
+    fun doFarmTask(bizKey: String?, taskSceneCode: String? = null, requestType: String = "NORMAL"): String =
         requestString(
             "com.alipay.antfarm.doFarmTask",
             JSONArray().put(JSONObject().apply {
                 put("bizKey", bizKey)
-                put("requestType", "NORMAL")
+                put("requestType", requestType)
                 put("sceneCode", "ANTFARM")
                 put("source", "H5")
                 put("version", VERSION)
                 if (!taskSceneCode.isNullOrBlank()) put("taskSceneCode", taskSceneCode)
             }).toString(),
         )
+
+    fun doSceneTask(
+        bizKey: String,
+        taskSceneCode: String,
+        onFailure: (JSONObject) -> TaskFlowActionResult,
+    ): TaskFlowActionResult {
+        val rpc = "AntFarmRpcCall.doFarmTask"
+        val raw = doFarmTask(bizKey, taskSceneCode, "RPC")
+        val response = JsonUtil.parseJSONObjectOrNull(raw) ?: return TaskFlowActionResult.failure(
+            TaskRpcFailureType.RETRYABLE_RPC,
+            message = "场景任务请求返回空或无法解析",
+            rpc = rpc,
+            raw = raw,
+            continueCurrentRoundOnFailure = true,
+        ).copy(refreshAfterAction = true)
+        if (!ResChecker.checkRes(TAG, response)) {
+            val failure = onFailure(response).copy(rpc = rpc, raw = raw, refreshAfterAction = true)
+            if (failure.code == "1009" || failure.code == "331") {
+                return failure.copy(failureType = TaskRpcFailureType.BUSINESS_LIMIT)
+            }
+            // 保留失败语义；后续列表确认进展时由统一任务执行流程消解失败。
+            return failure
+        }
+        return TaskFlowActionResult.defer(
+            DeferredReason.STATE_CONFIRMATION,
+            message = "场景任务请求已发送，等待所属任务列表确认",
+            rpc = rpc,
+            raw = raw,
+            detail = "taskSceneCode=$taskSceneCode bizKey=$bizKey",
+            refreshAfterAction = true,
+        )
+    }
 
     @JvmStatic
     fun queryTabVideoUrl(): String =

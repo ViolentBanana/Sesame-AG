@@ -71,6 +71,14 @@ object AccountSessionCoordinator {
 
     fun currentSession(): ActiveAccountSession? = currentSession
 
+    @Synchronized
+    fun <T> withCurrentSession(identity: AccountSessionIdentity, action: () -> T): T {
+        check(!switchInProgress && checkCurrentSession(identity.userId, identity.sessionEpoch) is AccountSessionCheck.Current) {
+            "账号会话已变化"
+        }
+        return action()
+    }
+
     fun currentUserId(): String? = currentSession?.userId
 
     fun currentOrPersistedSessionIdentity(): AccountSessionIdentity? {
@@ -103,6 +111,7 @@ object AccountSessionCoordinator {
 
     fun isSwitching(): Boolean = switchInProgress
 
+    @Synchronized
     fun beginSessionSwitch(
         reason: String,
         targetUserId: String?,
@@ -133,6 +142,7 @@ object AccountSessionCoordinator {
         return newEpoch
     }
 
+    @Synchronized
     fun clearRuntimeSession(reason: String) {
         currentSession = null
         switchInProgress = false
@@ -140,6 +150,7 @@ object AccountSessionCoordinator {
         Log.record(TAG, "clear runtime session: reason=$reason")
     }
 
+    @Synchronized
     fun cancelSessionSwitch(reason: String) {
         clearRuntimeSession("cancel_session_switch:$reason")
     }
@@ -155,6 +166,7 @@ object AccountSessionCoordinator {
         )
     }
 
+    @Synchronized
     fun applySession(
         context: Context?,
         userId: String,
@@ -178,6 +190,9 @@ object AccountSessionCoordinator {
             sessionEpoch = epoch,
             switchedAtMs = now
         )
+        if (context != null) {
+            PersistentScheduleRegistry.recoverInterruptedExecutions(safeUserId, epoch)
+        }
         synchronizeEpochGenerator(epoch)
         currentSession = session
         switchInProgress = false
@@ -194,6 +209,7 @@ object AccountSessionCoordinator {
         return session
     }
 
+    @Synchronized
     fun refreshWorkflowState(
         context: Context?,
         reason: String,
@@ -228,6 +244,7 @@ object AccountSessionCoordinator {
         return updated
     }
 
+    @Synchronized
     fun blockWorkflow(
         context: Context?,
         reason: String,
@@ -276,6 +293,7 @@ object AccountSessionCoordinator {
         userId: String?,
         sessionEpoch: Long,
     ): AccountSessionCheck {
+        if (switchInProgress) return AccountSessionCheck.NoCurrentSession
         val current = currentSession ?: return AccountSessionCheck.NoCurrentSession
         val safeUserId = userId?.trim().orEmpty()
         if (safeUserId.isEmpty() || current.userId != safeUserId) {

@@ -1,9 +1,12 @@
 package io.github.aoguai.sesameag.task.antStall
 
+import io.github.aoguai.sesameag.task.antFarm.AntFarmRpcCall
+
 import android.util.Base64
 import io.github.aoguai.sesameag.data.Status
 import io.github.aoguai.sesameag.data.StatusFlags
 import io.github.aoguai.sesameag.entity.friend.FriendCapabilityState
+import io.github.aoguai.sesameag.entity.friend.FriendRelation
 import io.github.aoguai.sesameag.hook.AccountSessionCoordinator
 import io.github.aoguai.sesameag.hook.ApplicationHook
 import io.github.aoguai.sesameag.hook.keepalive.PersistentLaunchPolicy
@@ -44,7 +47,9 @@ import io.github.aoguai.sesameag.util.TimeCounter
 import io.github.aoguai.sesameag.util.TimeUtil
 import io.github.aoguai.sesameag.util.WakeLockManager
 import io.github.aoguai.sesameag.util.friend.FriendCapabilityRecorder
+import io.github.aoguai.sesameag.util.friend.FriendRepository
 import io.github.aoguai.sesameag.util.maps.UserMap
+import kotlinx.coroutines.CancellationException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigDecimal
@@ -61,6 +66,7 @@ import java.util.concurrent.ConcurrentHashMap
 class AntStall : ModelTask() {
     private enum class StallTaskCompleteRoute {
         GAME_PLAY_DURATION,
+        BUSINESS_ACTION,
         FINISH,
         DAILY_QA,
         INVITE_REGISTER,
@@ -634,6 +640,7 @@ class AntStall : ModelTask() {
                 tc.countDebug("贴罚单")
             }
         } catch (t: Throwable) {
+            if (t is InterruptedException || t is CancellationException) throw t
             Log.printStackTrace(TAG, "home err:", t)
         } finally {
             Log.stall("执行结束-${getName()}")
@@ -697,7 +704,7 @@ class AntStall : ModelTask() {
             }
 
             val friendRankList = json.getJSONArray("friendRankList")
-            for (i in 0 until friendRankList.length()) {
+            for (i in (0 until friendRankList.length()).shuffled()) {
                 val friend = friendRankList.getJSONObject(i)
                 val friendUserId = friend.getString("userId")
 
@@ -767,7 +774,7 @@ class AntStall : ModelTask() {
             }
 
             // 处理每个摊位
-            for (i in 1..2) {
+            for (i in (1..2).shuffled()) {
                 val seat = seatsMap.getJSONObject("GUEST_0$i")
                 val seatId = seat.getString("seatId")
 
@@ -1268,7 +1275,8 @@ class AntStall : ModelTask() {
         shopIds: Queue<String>,
     ): Boolean {
         var opened = false
-        val sortedSeats = seats.sortedByDescending { it.hot }
+        // 保留热度优先，只随机相同热度好友的尝试顺序。
+        val sortedSeats = seats.shuffled().sortedByDescending { it.hot }
         val currentUid = UserMap.currentUid
 
         for (seat in sortedSeats) {
@@ -1466,6 +1474,8 @@ class AntStall : ModelTask() {
                     blacklistKeys = listOf(taskType, taskTitle).filter { it.isNotBlank() },
                     raw = raw,
                     progress = "actionType=${actionType.ifBlank { "UNKNOWN" }} award=$awardCount",
+                    current = if (task.has("taskProgress") && !task.isNull("taskProgress")) task.optInt("taskProgress") else null,
+                    limit = if (task.has("taskRequire") && !task.isNull("taskRequire")) task.optInt("taskRequire") else null,
                 ),
             )
         }
@@ -1513,7 +1523,12 @@ class AntStall : ModelTask() {
             return when {
                 isStallRewardReadyStatus(item.status) -> TaskFlowPhase.REWARD_READY
                 isStallTerminalStatus(item.status) -> TaskFlowPhase.TERMINAL
-                isStallTodoStatus(item.status) -> TaskFlowPhase.READY_TO_COMPLETE
+                isStallTodoStatus(item.status) ->
+                    if (resolveStallTaskCompleteRoute(item) == StallTaskCompleteRoute.BUSINESS_ACTION) {
+                        TaskFlowPhase.BUSINESS_ACTION
+                    } else {
+                        TaskFlowPhase.READY_TO_COMPLETE
+                    }
                 else -> TaskFlowPhase.UNKNOWN
             }
         }
@@ -1524,6 +1539,9 @@ class AntStall : ModelTask() {
             }
 
             val phase = mapPhase(item)
+            if (phase == TaskFlowPhase.BUSINESS_ACTION) {
+                logStallTaskOnce("新村任务⛪[${item.title}]等待游戏业务完成确认，进度=${item.current ?: "未知"}/${item.limit}")
+            }
             if (phase == TaskFlowPhase.REWARD_READY && stallReceiveAward.value != true) {
                 logStallTaskOnce("新村任务⛪[${item.title}]已完成，未开启领奖，跳过领取")
                 return true
@@ -1560,6 +1578,11 @@ class AntStall : ModelTask() {
                 else -> {
                     when (resolveStallTaskCompleteRoute(item)) {
                         StallTaskCompleteRoute.GAME_PLAY_DURATION -> completeGamePlayDurationTask(item)
+                        StallTaskCompleteRoute.BUSINESS_ACTION -> TaskFlowActionResult.defer(
+                            DeferredReason.PREREQUISITE_PENDING,
+                            message = "等待游戏业务完成确认，进度=${item.current ?: "未知"}/${item.limit}",
+                            detail = stallTaskActionDetail(item, "business"),
+                        )
                         StallTaskCompleteRoute.DAILY_QA -> {
                             completeDailyQuestionTask(item)
                         }
@@ -2082,11 +2105,16 @@ class AntStall : ModelTask() {
         return if (isStallTaskRpcSuccess(json)) {
             completedStallTaskResult(item)
         } else {
-            stallTaskActionFailureResult(
+            val failure = stallTaskActionFailureResult(
                 response = json,
                 rpc = "AntStallRpcCall.finishTask",
                 detail = stallTaskActionDetail(item, "finishTask"),
             )
+            if (failure.code == "400000040") {
+                AntFarmRpcCall.doSceneTask(item.type, "ANTSTALL_TASK") { fallback ->
+                    stallTaskActionFailureResult(fallback, "AntFarmRpcCall.doFarmTask", stallTaskActionDetail(item, "finishTask"))
+                }
+            } else failure
         }
     }
 
@@ -2462,8 +2490,19 @@ class AntStall : ModelTask() {
             item.type == STALL_DAILY_QA_TASK_TYPE -> StallTaskCompleteRoute.DAILY_QA
             item.type == STALL_INVITE_REGISTER_TASK_TYPE -> StallTaskCompleteRoute.INVITE_REGISTER
             item.type == STALL_OPEN_SHOP_TASK_TYPE -> StallTaskCompleteRoute.OPEN_SHOP
-            stallGamePlayContract(item) != null -> StallTaskCompleteRoute.GAME_PLAY_DURATION
-            else -> StallTaskCompleteRoute.FINISH
+            else -> {
+                val descriptor = GameCenterPlayRpcCall.describeTask(item.raw)
+                val bizInfo = item.raw?.optJSONObject("bizInfo")
+                when {
+                    // 新村页面倒计时由原完成接口处理，不等同于游戏中心时长上报。
+                    descriptor.isGameTask && bizInfo?.optString("taskMode") == "COUNT_DOWN" &&
+                        (bizInfo?.optInt("countDownSeconds") ?: 0) > 0 -> StallTaskCompleteRoute.FINISH
+                    descriptor.contract != null -> StallTaskCompleteRoute.GAME_PLAY_DURATION
+                    item.actionType == "VISIT_AUTO_FINISH" -> StallTaskCompleteRoute.FINISH
+                    descriptor.isGameTask && (item.limit ?: 0) > 0 -> StallTaskCompleteRoute.BUSINESS_ACTION
+                    else -> StallTaskCompleteRoute.FINISH
+                }
+            }
         }
 
     private fun isDynamicXLightTask(item: TaskFlowItem): Boolean {
@@ -2715,7 +2754,7 @@ class AntStall : ModelTask() {
             val friendRankList = json.optJSONArray("friendRankList") ?: return false
             if (friendRankList.length() == 0) return false
 
-            for (i in 0 until friendRankList.length()) {
+            for (i in (0 until friendRankList.length()).shuffled()) {
                 val friend = friendRankList.getJSONObject(i)
 
                 if (!friend.optBoolean("canInviteRegister", false) ||
@@ -2790,7 +2829,7 @@ class AntStall : ModelTask() {
             Log.stall("开始为 ${friendSet.size} 位好友进行新村助力...")
             var progressed = false
 
-            for (safeUid in friendSet) {
+            for (safeUid in friendSet.shuffled()) {
                 if (FriendGuard.shouldSkipFriend(safeUid, TAG, "新村助力")) {
                     continue
                 }
@@ -3102,6 +3141,7 @@ class AntStall : ModelTask() {
      * @brief 丢肥料主流程
      */
     private fun throwManure() {
+        if (Status.hasFlagToday(StatusFlags.FLAG_ANTSTALL_THROW_MANURE_LIMIT)) return
         try {
             val response = AntStallRpcCall.dynamicLoss()
             val json = JSONObject(response)
@@ -3114,13 +3154,21 @@ class AntStall : ModelTask() {
             val astLossDynamicVOS = json.getJSONArray("astLossDynamicVOS")
             var dynamicList = JSONArray()
 
-            for (i in 0 until astLossDynamicVOS.length()) {
+            for (i in (0 until astLossDynamicVOS.length()).shuffled()) {
                 val lossDynamic = astLossDynamicVOS.getJSONObject(i)
 
                 if (lossDynamic.has("specialEmojiVO")) continue
 
-                val objectId = lossDynamic.getString("objectId")
-                if (FriendGuard.shouldSkipFriend(objectId, TAG, "新村丢肥料")) {
+                val objectId = lossDynamic.getString("objectId").trim()
+                if (FriendRepository.isGlobalBlocked(objectId)) {
+                    Log.record(TAG, "新村丢肥料 跳过[$objectId]：好友中心全局黑名单")
+                    continue
+                }
+                // 服务端损失动态可包含好友库之外的目标；已知关系仍遵守原有约束。
+                if ((objectId.isEmpty() || FriendGuard.isSelf(objectId) ||
+                        FriendRepository.relationOf(objectId) != FriendRelation.UNKNOWN) &&
+                    FriendGuard.shouldSkipFriend(objectId, TAG, "新村丢肥料")
+                ) {
                     continue
                 }
                 var isThrowManure = stallThrowManureList.contains(objectId)
@@ -3140,6 +3188,7 @@ class AntStall : ModelTask() {
 
                 if (dynamicList.length() == 5) {
                     throwManure(dynamicList)
+                    if (Status.hasFlagToday(StatusFlags.FLAG_ANTSTALL_THROW_MANURE_LIMIT)) return
                     dynamicList = JSONArray()
                 }
             }

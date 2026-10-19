@@ -219,6 +219,12 @@ class Status {
         }
 
         @JvmStatic
+        fun getWaterFriendTodayCount(id: String, taskUid: String): Int? {
+            if (taskUid != UserMap.currentUid) return null
+            return INSTANCE.waterFriendLogList["$taskUid-$id"] ?: 0
+        }
+
+        @JvmStatic
         fun canWaterFriendToday(id: String, newCount: Int): Boolean {
             val key = "${UserMap.currentUid}-$id"
             val count = INSTANCE.waterFriendLogList[key] ?: return true
@@ -660,6 +666,7 @@ class Status {
         @Synchronized
         @JvmStatic
         fun save(nowCalendar: Calendar = Calendar.getInstance()) {
+            io.github.aoguai.sesameag.task.TaskExecutionReport.current()?.ensureCurrent()
             val targetUid = UserMap.currentUid
             if (targetUid.isNullOrEmpty()) {
                 Log.record(TAG, "用户为空，状态保存失败")
@@ -682,7 +689,9 @@ class Status {
                 INSTANCE.currentUid = targetUid
                 INSTANCE.saveTime = System.currentTimeMillis()
                 val statusFile = Files.getStatusFile(targetUid)!!
-                Files.write2File(JsonUtil.formatJson(INSTANCE), statusFile)
+                check(Files.write2File(JsonUtil.formatJson(INSTANCE), statusFile)) {
+                    "状态保存失败: ${statusFile.absolutePath}"
+                }
                 // 关键：更新标记，防止下一次 load 触发冗余读取
                 lastModifiedTime = statusFile.lastModified()
                 lastUid = targetUid
@@ -755,7 +764,12 @@ class Status {
          */
         @JvmStatic
         @JvmOverloads
-        fun setFlagToday(flag: String, retryTimes: String? = null) {
+        @Synchronized
+        fun setFlagToday(flag: String, retryTimes: String? = null, expectedUserId: String? = null) {
+            if (expectedUserId != null) {
+                check(UserMap.currentUid == expectedUserId && INSTANCE.currentUid == expectedUserId) { "今日标记账号已变化" }
+                check(!ApplicationHookConstants.isOffline()) { "离线状态不能确认好友同步完成" }
+            }
             if (ApplicationHookConstants.isOffline()) {
                 if (offlineSkippedTodayFlags.add(flag)) {
                     Log.record(TAG, "离线模式跳过今日标识: $flag")
@@ -781,8 +795,10 @@ class Status {
         }
 
         private fun setFlagTodayInternal(flag: String, retryTimes: String?) {
+            io.github.aoguai.sesameag.task.TaskExecutionReport.current()?.ensureCurrent()
             val (module, name) = parseFlag(flag)
             val flags = INSTANCE.moduleFlags.getOrPut(module) { HashMap() }
+            val oldFlags = HashMap(flags)
             val oldCount = flags[name] ?: 0
 
             var changed = false
@@ -809,7 +825,13 @@ class Status {
             }
 
             if (changed) {
-                save()
+                try {
+                    save()
+                } catch (e: Exception) {
+                    flags.clear()
+                    flags.putAll(oldFlags)
+                    throw e
+                }
             }
         }
 

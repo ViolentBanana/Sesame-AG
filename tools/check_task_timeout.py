@@ -23,19 +23,21 @@ object ApplicationHookConstants { fun isOffline() = false }
 object ManualTask { var isManualRunning = false }
 object TaskCommon { const val IS_ENERGY_TIME = false; fun update() {} }
 sealed class AccountSessionCheck { data object Current : AccountSessionCheck() }
-object Log { fun record(t: String, m: String) {}; fun error(t: String, m: String) {} }
+enum class TaskExecutionOutcome { SUCCESS, FAILED, SKIPPED, CANCELLED, DEFERRED }
+object Log { fun printStackTrace(t: String, m: String, e: Throwable) {}; fun record(t: String, m: String) {}; fun error(t: String, m: String) {} }
 open class ModelTask(val duration: Long = 200, val cleanup: Long = 0) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    lateinit var job: Job
+    lateinit var job: Deferred<TaskExecutionOutcome>
     val started = CompletableDeferred<Unit>()
     var stopped = false
     var finished = false
     var refuseWait = false
+    var outcome = TaskExecutionOutcome.SUCCESS
     fun getName() = this.javaClass.simpleName
     fun addRunCents() {}
-    fun startTask(force: Boolean, rounds: Int): Job {
-        job = scope.launch {
-            try { started.complete(Unit); delay(duration) }
+    fun startTask(force: Boolean, rounds: Int): Deferred<TaskExecutionOutcome> {
+        job = scope.async {
+            try { started.complete(Unit); delay(duration); outcome }
             finally { withContext(NonCancellable) { delay(cleanup); finished = true } }
         }
         return job
@@ -53,6 +55,9 @@ class AntSports : ModelTask()
 class Runner {
     val TAG = "test"
     val DEFAULT_TASK_TIMEOUT = 40L
+    val allTasksSucceeded = AtomicBoolean(true)
+    val cancelledCount = AtomicInteger()
+    val deferredCount = AtomicInteger()
     val successCount = AtomicInteger()
     val failureCount = AtomicInteger()
     val skippedCount = AtomicInteger()
@@ -77,6 +82,13 @@ fun main() = runBlocking {
         runner.run(next)
         check(next.finished && runner.successCount.get() == 1) { "Next scheduled task stayed blocked" }
         task.scope.cancel(); next.scope.cancel()
+    }
+    for (result in listOf(TaskExecutionOutcome.FAILED, TaskExecutionOutcome.DEFERRED, TaskExecutionOutcome.CANCELLED)) {
+        val runner = Runner()
+        val task = ModelTask(1).apply { outcome = result }
+        runner.run(task)
+        check(runner.successCount.get() == 0 && !runner.allTasksSucceeded.get()) { "Upstream outcome was lost" }
+        task.scope.cancel()
     }
     val runner = Runner()
     val task = ModelTask(1000, 30)

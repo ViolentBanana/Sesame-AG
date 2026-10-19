@@ -46,7 +46,6 @@ internal suspend fun AntSesameCredit.prepareSesameWorkflows(
 
     var claimSesame = false
     var claimProgress = false
-    var sesameTaskWorkflowRan = false
     var accountInterrupted = false
 
     if (sesameGrainExchange?.value == true) {
@@ -64,7 +63,6 @@ internal suspend fun AntSesameCredit.prepareSesameWorkflows(
             if (hasFlagToday(StatusFlags.FLAG_SESAME_DO_ALL_AVAILABLE_TASK)) {
                 Log.sesame("⏭️ 今天已完成过芝麻信用任务，跳过执行")
             } else {
-                sesameTaskWorkflowRan = true
                 Log.sesame("🎮 开始执行芝麻信用任务")
                 accountInterrupted = doAllAvailableSesameTask().interrupted
             }
@@ -80,12 +78,11 @@ internal suspend fun AntSesameCredit.prepareSesameWorkflows(
         }
 
         if (collectSesame?.value == true) {
-            if (hasFlagToday(StatusFlags.FLAG_SESAME_COLLECT_DONE) && !sesameTaskWorkflowRan) {
+            if (hasFlagToday(StatusFlags.FLAG_SESAME_COLLECT_DONE)) {
                 Log.sesame("⏭️ 今天已处理过芝麻粒领取，跳过执行")
             } else {
                 claimSesame = true
                 claimProgress = true
-                Log.sesame("🎯 芝麻相关任务执行中，稍后统一领取芝麻粒")
             }
         }
     }
@@ -110,7 +107,8 @@ internal suspend fun AntSesameCredit.prepareSesameWorkflows(
     }
 
     return AntSesameCreditWorkflowPlan(
-        claimSesame = claimSesame,
+        claimSesame = (claimSesame || sesameAlchemy?.value == true) &&
+            !hasFlagToday(StatusFlags.FLAG_SESAME_COLLECT_DONE),
         claimProgress = claimProgress,
         allowed = true,
         alchemyExecutionState = alchemyExecutionState,
@@ -137,8 +135,7 @@ internal suspend fun AntSesameCredit.finishSesameWorkflows(plan: AntSesameCredit
         if (ApplicationHookConstants.isOffline()) {
             Log.sesame("⏭️ 当前处于离线模式，跳过统一领取芝麻粒")
         } else {
-            Log.sesame("🎯 芝麻相关流程执行完成，开始统一领取芝麻粒")
-            collectSesame(collectSesameWithOneClick?.value == true)
+            collectSesame(collectSesameWithOneClick?.value == true || sesameAlchemy?.value == true)
         }
     }
 

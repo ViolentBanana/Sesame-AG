@@ -64,6 +64,9 @@ object StatusFlags {
     /** 森林：今日是否已签到 */
     const val FLAG_ANTFOREST_SIGN_DONE: String = "AntForest::signed"
 
+    /** 绿植浏览：服务端已确认当日任务完成 */
+    const val FLAG_FOREST_PLANT_BROWSE_DONE = "AntForest::plantBrowseDone"
+
     /** 森林 1V1 能量挑战赛：今日已查询并处理待领奖励 */
     const val FLAG_ANTFOREST_ENERGY_PVP_CHALLENGE_DONE: String = "AntForest::energyPvpChallengeDone"
 
@@ -128,6 +131,8 @@ object StatusFlags {
 
     /** 今日是否已处理「会员签到」 */
     const val FLAG_ANTMEMBER_MEMBER_SIGN_DONE: String = "AntMember::memberSignDone"
+
+    const val FLAG_ANTMEMBER_MEMBER_FLOATING_BALL_FAILED_TODAY = "AntMember::memberFloatingBallFailedToday"
 
     /** 今日会员任务已处理到无需继续刷新 */
     const val FLAG_ANTMEMBER_MEMBER_TASK_EMPTY_TODAY: String = "AntMember::memberTaskEmptyToday"
@@ -215,15 +220,6 @@ object StatusFlags {
 
     /** 芝麻信用：芝麻粒兑换今日是否已处理 */
     const val FLAG_SESAME_GRAIN_EXCHANGE_DONE: String = "AntSesameCredit::sesameGrainExchangeDone"
-
-    /** 信用 2101：图鉴章节任务是否全部完成 */
-    const val FLAG_CREDIT2101_CHAPTER_TASK_DONE: String = "FLAG_Credit2101_ChapterTask_Done"
-
-    /** 信用 2101：事件当日计数前缀 */
-    const val FLAG_CREDIT2101_EVENT_COUNT_PREFIX: String = "2101_Event_"
-
-    /** 信用 2101：事件当日计数后缀 */
-    const val FLAG_CREDIT2101_EVENT_COUNT_SUFFIX: String = "_COUNT_TODAY"
 
     /** 商家服务：每日签到 */
     const val FLAG_ANTMEMBER_MERCHANT_SIGN_DONE: String = "AntMember::merchantSignDone"
@@ -384,6 +380,12 @@ object StatusFlags {
 
     /** 金豆夺宝：今日任务列表已确认无可执行项 */
     const val FLAG_GOLDEN_BEAN_TASKS_DONE = "GoldenBeanTreasure::tasksDone"
+
+    /** 金豆夺宝：今日求签已确认完成 */
+    const val FLAG_GOLDEN_BEAN_FORTUNE_DRAWN = "GoldenBeanTreasure::fortuneDrawn"
+
+    /** 金豆商城：按商品规格记录今日已确认兑换次数 */
+    const val FLAG_GOLDEN_BEAN_MALL_EXCHANGE_COUNT_PREFIX = "GoldenBeanTreasure::mallExchangeCount::"
 
     /** 摇钱树：今日是否已收取金币树奖励 */
     const val FLAG_ANTORCHARD_MONEY_TREE_COLLECTED = "ANTORCHARD_MONEY_TREE_COLLECTED"

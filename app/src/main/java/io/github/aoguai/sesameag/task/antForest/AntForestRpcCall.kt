@@ -26,6 +26,23 @@ object AntForestRpcCall {
             .put("source", "forestWater")).toString(),
     )
 
+    fun queryPlantTaskList(): String = RequestManager.requestString(
+        "com.alipay.ugshopping.biz.service.rpc.plant.PlantFacade.queryPlantTaskList",
+        JSONArray().put(JSONObject().put("bizType", "forestMemberCorp").put("chInfo", "forestWater")).toString(),
+    )
+
+    fun queryPlantFeeds(page: Int): String = RequestManager.requestString(
+        "com.alipay.ugshopping.biz.service.rpc.plant.PlantFacade.queryPlantFeedsItemList",
+        JSONArray().put(JSONObject().put("bizType", "forestMemberCorp").put("blackItemIds", JSONArray())
+            .put("chInfo", "forestWater").put("pageNum", page).put("pageSize", 20)
+            .put("sessionId", "forestWater").put("version", "forest_oasis_v2")).toString(),
+    )
+
+    fun receivePlantTaskAward(taskCode: String): String = RequestManager.requestString(
+        "com.alipay.ugshopping.biz.service.rpc.plant.PlantFacade.plantAward",
+        JSONArray().put(JSONObject().put("awardType", taskCode).put("source", "forestWater")).toString(),
+    )
+
     private const val DEFAULT_SOURCE = "chInfo_ch_appcenter__chsub_9patch"
     private const val HOME_TASK_SOURCE = "chInfo_ch_appid-60000002"
     private const val FOREST_GAME_CENTER_SOURCE = "chInfo_ch_appid-60000002"
@@ -1315,6 +1332,17 @@ object AntForestRpcCall {
         )
 
     @JvmStatic
+    fun collectGiftBox(targetId: String, targetUserId: String): String =
+        RequestManager.requestString(
+            "alipay.antforest.forest.h5.collectGiftBox",
+            JSONArray().put(JSONObject().apply {
+                put("source", "chInfo_ch_appcenter__chsub_9patch")
+                put("targetId", targetId)
+                put("targetUserId", targetUserId)
+            }).toString(),
+        )
+
+    @JvmStatic
     fun collectFriendGiftBox(
         targetId: String,
         targetUserId: String,
@@ -1506,6 +1534,25 @@ object AntForestRpcCall {
             "alipay.bizfmcg.greenlife.sendEnergyByAction",
             "[{\"actionType\":\"GOODS_BROWSE\",\"requestId\":\"${RandomUtil.getRandomString(8)}\",\"sourceType\":\"$sourceType\"}]",
         )
+
+    fun retrieveCurrentMarketActivity(): String = RequestManager.requestString(
+        "alipay.bizfmcg.greenlife.retrieveCurrentActivity", "[{}]",
+    )
+
+    fun finishCurrentMarketTask(taskTemplateId: String): String = RequestManager.requestString(
+        "alipay.bizfmcg.greenlife.finishCurrentTask",
+        JSONArray().put(JSONObject().put("taskTemplateId", taskTemplateId)).toString(),
+    )
+
+    fun checkUserSecondSceneChance(): String = RequestManager.requestString(
+        "com.alipay.creditapollon.biz.rpc.api.rent.green.checkUserSecondSceneChance",
+        "[{\"requestSceneCode\":\"rentBrowse\"}]",
+    )
+
+    fun generateRentEnergy(): String = RequestManager.requestString(
+        "com.alipay.creditapollon.biz.rpc.api.rent.green.generateEnergy",
+        "[{\"requestSceneCode\":\"rentBrowse\"}]",
+    )
 
     @JvmStatic
     fun collectRobExpandEnergy(

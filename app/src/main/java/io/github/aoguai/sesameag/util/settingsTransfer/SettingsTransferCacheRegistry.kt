@@ -22,6 +22,8 @@ object SettingsTransferCacheRegistry {
     )
 
     private val rules = listOf(
+        CacheRule("exchange_bill_coin", ConfigPortScope.ACCOUNT_PRIVATE, "exchange_options_${ExchangeOptionsRefreshBridge.TARGET_BILL_COIN}.json"),
+        CacheRule("exchange_golden_bean_mall", ConfigPortScope.ACCOUNT_PRIVATE, "exchange_options_${ExchangeOptionsRefreshBridge.TARGET_GOLDEN_BEAN_MALL}.json"),
         CacheRule("exchange_member_point", ConfigPortScope.GENERIC, "exchange_options_${ExchangeOptionsRefreshBridge.TARGET_MEMBER_POINT}.json"),
         CacheRule("exchange_mybank_welfare", ConfigPortScope.GENERIC, "exchange_options_${ExchangeOptionsRefreshBridge.TARGET_MYBANK_WELFARE}.json"),
         CacheRule("exchange_bean_right", ConfigPortScope.GENERIC, "exchange_options_${ExchangeOptionsRefreshBridge.TARGET_BEAN_RIGHT}.json"),
@@ -81,7 +83,7 @@ object SettingsTransferCacheRegistry {
                 return@forEach
             }
             val file = resolveUserFile(safeUserId, rule.fileName)
-            if (!Files.write2File(entry.content, file)) {
+            if (!Files.writeAtomically(entry.content, file)) {
                 Log.runtime(TAG, "写入缓存失败: ${rule.fileName}")
                 return false
             }
@@ -96,15 +98,16 @@ object SettingsTransferCacheRegistry {
         return true
     }
 
-    fun targetFilesForScope(userId: String?, scope: ConfigPortScope): List<File> {
+    fun targetFilesForScope(userId: String?, scope: ConfigPortScope, entries: Collection<SettingsTransferCacheEntry>): List<File> {
         val safeUserId = userId?.trim().orEmpty()
         if (safeUserId.isEmpty()) {
             return emptyList()
         }
         val files = linkedSetOf<File>()
-        rules.filter { it.scope == scope }
+        val keys = entries.map { it.key }.toSet()
+        rules.filter { it.scope == scope && it.key in keys }
             .forEach { files.add(resolveUserFile(safeUserId, it.fileName)) }
-        if (scope == ConfigPortScope.GENERIC) {
+        if (scope == ConfigPortScope.GENERIC && IP_DRAW_LEGACY_CACHE_KEY in keys) {
             files.add(resolveUserFile(safeUserId, IP_DRAW_LEGACY_CACHE_FILE))
         }
         return files.toList()
@@ -155,7 +158,7 @@ object SettingsTransferCacheRegistry {
                 shopItems.clear()
                 shopItems.putAll(snapshot.shopItems)
             }
-            Files.write2File(JsonUtil.formatJson(data), file)
+            Files.writeAtomically(JsonUtil.formatJson(data), file)
         }.onFailure {
             Log.printStackTrace(TAG, "写入 IP 抽抽乐旧快照失败", it)
         }.getOrDefault(false)
@@ -171,8 +174,11 @@ object SettingsTransferCacheRegistry {
         }
         runCatching {
             if (rule.fileName.startsWith("exchange_options_")) {
+                val rows = if (content.trimStart().startsWith("{")) {
+                    org.json.JSONObject(content).getJSONArray("rows").toString()
+                } else content
                 JsonUtil.parseObject(
-                    content,
+                    rows,
                     object : TypeReference<List<ExchangeOptionRow>>() {}
                 )
             } else {

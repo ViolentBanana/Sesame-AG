@@ -67,12 +67,12 @@ object SystemWakeScheduler {
     }
 
     /** 两个精度通道互不阻挡；目标进程仅保留最近计划的一个轻量计时器。 */
-    fun schedule(context: Context, schedule: PersistentSchedule, silent: Boolean = false): Boolean =
-        synchronized(plannerLock) {
+    fun schedule(context: Context, schedule: PersistentSchedule, silent: Boolean = false): Boolean = try {
+        PersistentScheduleRegistry.withRegistryLock {
             val appContext = context.applicationContext ?: context
             val snapshot = PersistentScheduleRegistry.list()
             val scheduled = snapshot.filter { it.state == PersistentScheduleState.SCHEDULED }
-            val localScheduled = updateLocalTimer(appContext, scheduled)
+            val localScheduled = synchronized(plannerLock) { updateLocalTimer(appContext, scheduled) }
             var systemScheduled = true
             for (lane in listOf(LANE_EXACT, LANE_FLEXIBLE)) {
                 val primary = scheduled.filter { laneFor(it) == lane }.minByOrNull { it.triggerAtMs }
@@ -120,6 +120,10 @@ object SystemWakeScheduler {
             }
             systemScheduled || localScheduled
         }
+    } catch (e: Exception) {
+        Log.printStackTrace(TAG, "持久调度重排失败", e)
+        false
+    }
 
     /** Only touches AlarmManager; safe to call while the host holds its registry lock. */
     fun scheduleLane(context: Context, lane: Int, triggerAtMs: Long, windowMs: Long, userExact: Boolean): Boolean {

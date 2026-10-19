@@ -192,7 +192,13 @@ private class OrchardDrawTaskFlowAdapter(
     override fun mapPhase(item: TaskFlowItem): TaskFlowPhase =
         when (item.status) {
             "FINISHED" -> TaskFlowPhase.REWARD_READY
-            "TODO" -> TaskFlowPhase.READY_TO_COMPLETE
+            "TODO" -> when {
+                item.actionType == "VISIT_FLOAT_BALL" -> TaskFlowPhase.READY_TO_COMPLETE
+                item.limit != null && item.current != null && item.current < item.limit ->
+                    TaskFlowPhase.BUSINESS_ACTION
+
+                else -> TaskFlowPhase.READY_TO_COMPLETE
+            }
             "RECEIVED" -> TaskFlowPhase.TERMINAL
             else -> TaskFlowPhase.UNKNOWN
         }

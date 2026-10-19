@@ -20,7 +20,6 @@ private val sesameCreditDefaultBlacklist =
         "zml_zmzl_xdrw_erfang", // pushActivity 返回 ILLEGAL_ARGUMENT，需真实租赁下单
         "zml_tbbbnc_shifei_sanfang", // pushActivity 返回 ILLEGAL_ARGUMENT，需真实淘宝行为
         "zmxy_zml_wannengxiaozujian", // pushActivity 返回 ILLEGAL_ARGUMENT，需真实桌面组件行为
-        "zml_cainiao_guojiang_sanfang", // pushActivity 返回 ILLEGAL_ARGUMENT，需真实菜鸟行为
         "zml_tbqd_qiandao_sanfang", // 需要淘宝签到结果
         "zml_xiangjiangshikaipao_renwu", // 需要游戏内任务事件
         "zml_longjizhicheng_renwu", // pushActivity 返回 promiseActivityExtCheck 非法，需游戏内任务事件
@@ -28,8 +27,24 @@ private val sesameCreditDefaultBlacklist =
         "zml_baoweixiangrikui_renwu", // 需要游戏内任务事件
         "zml_jihewangguo_renwu", // 需要游戏内任务事件
         "zml_xundaodaqian_renwu", // 砍伐30次的游戏事件，pushActivity返回ILLEGAL_ARGUMENT
+        "zm_WckGYybV_kUm3oyT1", // 砍伐20次的游戏事件，pushActivity返回ILLEGAL_ARGUMENT
         "AP16358996", // EVENT_TRIGGER：几何王国通过3关，直接send返回20020012
         "AP17359071", // EVENT_TRIGGER：灵画师消耗30包子，直接send返回20020012
+        "AP12359059", // 去玩疯狂水世界
+        "AP19359169", // 去玩三国冰河时代
+        "AP13358931", // 去玩寻道大千
+        "AP11371919", // 去玩这关我很行
+        "AP11358913", // 去玩保卫向日葵
+        "AP14359058", // 去玩青云诀之伏魔
+        "AP13358969", // 去玩烈焰觉醒
+        "AP12371914", // 去玩打个螺丝
+        "AP16358982", // 去玩时光杂货店
+        "AP15358968", // 去玩斗破苍穹
+        "AP10359017", // 去玩龙迹之城
+        "AP11359168", // 去玩向僵尸开炮
+        "zm_u5bepGDb_lD8AKQYM", // 去玩梦幻消除战
+        "zm_MGkWswjl_MtLkfw6H", // 去玩保卫向日葵
+        "zm_0r58uRFu_6FBDmbZC", // 去玩向往的生活
     )
 
 private val sesameAlchemyDefaultBlacklist =
@@ -38,8 +53,6 @@ private val sesameAlchemyDefaultBlacklist =
         "hjwf_zcylt_zhuanhua",
         "hjwf_eduka_renwu",
         "alchemy_check_in_subscribe_task", // joinActivity 返回 PROMISE_TEMPLATE_NOT_EXIST
-        "hjwf_tbqd_qiandao_sanfang",
-        "hjwf_tbbbnc_shifei_sanfang",
         "hjwf_xiangjiangshikaipao_renwu", // 游戏事件不能由pushActivity完成，返回ILLEGAL_ARGUMENT
         "hjwf_zcylt_chongzhi", // 真实充值不能由pushActivity完成，返回ILLEGAL_ARGUMENT
         "hjwf_langmancanting_renwu", // 完成3个订单的游戏事件，pushActivity返回ILLEGAL_ARGUMENT
@@ -49,7 +62,6 @@ private val sesameAlchemyDefaultBlacklist =
 private val orchardDefaultBlacklist =
     setOf(
         // 芭芭农场
-        "ORCHARD_NORMAL_DIAOYU1", // 钓鱼1次
         "ZHUFANG3IN1", // 添加农场小组件并访问
         "70000|逛好物最高得1500肥料", // XLight广告流量风控，缺少稳定自动闭环
         "12173", // 买好货
@@ -73,7 +85,6 @@ private val orchardDefaultBlacklist =
         "CHOUCHOULE_GAME_WDHYSJ_ZH", // 居民订单不可由普通 finishDrawTask 完成，返回 400000040
         "CHOUCHOULE_GAME_WDHYSJ_CHARGE", // 需真实充值，finishDrawTask 返回 400000040
         "ORCHARD_NORMAL_GAODE_VISIT|去高德发表真实评价", // finishTask 返回 400000040，不支持rpc调用
-        "ORCHARD_NORMAL_SHANGOUMIANDAN|逛一逛淘宝闪购", // finishTask 返回 400000040，不支持rpc调用
         "ORCHARD_NORMAL_TAOBAO26_618|去淘金币赢20亿", // 不支持rpc调用，缺少稳定完成RPC闭环
         "ORCHARD_NORMAL_BAIDU_DUO", // 去百度浏览资讯
         "ORCHARD_NORMAL_XIANXIAZHIFU100", // 到店支付1笔得100肥
@@ -111,6 +122,8 @@ private val farmDefaultBlacklist =
         "HEART_DONATE", // 爱心捐赠
         "MYZY_pay_rcccl_jhwg", // 游戏充值得10次抽抽乐机会，需真实支付
         "MYZY_pay_IPccl_jhwg", // 游戏充值得10次抽抽乐机会，需真实支付
+        "MYZY_pay_rcccl_fkssj", // 游戏充值并消费，需真实支付
+        "MYZY_pay_IPccl_fkssj", // 游戏充值并消费，需真实支付
         "antfarm_pay_task_wdhysj_ccl", // 游戏充值得10次抽抽乐机会，需真实支付
         "ipccl_pay_ah_wdhy_ahsj_1y_ah", // 游戏充值得10次抽抽乐机会，需真实支付
         "20251118_chouchoulechoukuan2|伸出援手，点亮希望", // 装扮抽抽乐公益捐赠任务
@@ -249,6 +262,7 @@ private val stallDefaultBlacklist =
         "ANTSTALL_TASK_XCXYX_langmancanting", // 需要完成游戏订单，普通finishTask返回400000040
         "ANTSTALL_TASK_XCXYX_qingyunjue", // 需要游戏内闯关事件，普通finishTask返回400000040
         "ANTSTALL_TASK_XCXYX_sijiwuyu", // 需要游戏内合成事件，普通finishTask返回400000040
+        "ANTSTALL_TASK_XCXYX_yibuliangbu", // 需要游戏内通关事件，普通finishTask返回400000040
     )
 
 private val yuebaoDefaultBlacklist =
@@ -392,6 +406,10 @@ private val myBankWelfareDefaultBlacklist =
         "AP12341521", // 查看借呗额度：需真实授信业务行为
         "AP18353629", // 办理全国大流量卡：需真实办理业务
         "AP12333795", // 完成1笔借呗支用：需真实借款支用行为
+        "AP18374962", // 领取网商贷备用金：事件规则明确拒绝通用send（10000005）
+        "AP12350308", // 生存33天解锁3次地图迷雾
+        "AP19360653", // 支付宝ETC办理立减10元
+        "AP17360654", // 免费查询ETC办理资格
     )
 
 val DEFAULT_BLACKLIST: Map<String, Set<String>> =
