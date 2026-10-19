@@ -253,10 +253,12 @@ object ApplicationHookConstants {
                         else -> "模块已进入离线，已暂停"
                     }
                 runCatching {
-                    io.github.aoguai.sesameag.util.Notify.sendAlert(
-                        title,
-                        detail?.takeIf { it.isNotBlank() } ?: "请打开支付宝完成验证或查看错误日志",
-                    )
+                    val content = detail?.takeIf { it.isNotBlank() } ?: "请打开支付宝完成验证或查看错误日志"
+                    if (reason == "network_error_threshold" || reason == "rpc_error_threshold") {
+                        io.github.aoguai.sesameag.util.Notify.sendNetworkAlert(title, content)
+                    } else {
+                        io.github.aoguai.sesameag.util.Notify.sendAlert(title, content)
+                    }
                 }
             }
         }

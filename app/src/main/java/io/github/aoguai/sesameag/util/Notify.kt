@@ -29,6 +29,7 @@ object Notify {
     private val TAG: String = Notify::class.java.simpleName
 
     private const val RUNNING_NOTIFICATION_ID = 99
+    private const val NETWORK_ALERT_NOTIFICATION_ID = 97
     private const val ALERT_NOTIFICATION_ID = 98
     private const val RUNNING_CHANNEL_ID = "io.github.aoguai.sesameag.RUNNING_STATUS"
     private const val ALERT_CHANNEL_ID = "io.github.aoguai.sesameag.ALERTS"
@@ -40,6 +41,9 @@ object Notify {
     var context: Context? = null
 
     private var notificationManager: NotificationManager? = null
+
+    // 首次成功也清理上一个进程遗留的网络告警。
+    private var networkAlertPending = true
 
     @SuppressLint("StaticFieldLeak")
     private var runningBuilder: NotificationCompat.Builder? = null
@@ -479,7 +483,33 @@ object Notify {
         sendAlertNotification(title, content)
     }
 
-    private fun sendAlertNotification(title: String?, content: String?) {
+    @JvmStatic
+    @Synchronized
+    fun sendNetworkAlert(title: String?, content: String?) {
+        networkAlertPending = true
+        sendAlertNotification(title, content, NETWORK_ALERT_NOTIFICATION_ID)
+    }
+
+    @JvmStatic
+    @Synchronized
+    fun clearNetworkAlert() {
+        if (!networkAlertPending) return
+        try {
+            val manager = notificationManager
+                ?: (context?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                ?: return
+            manager.cancel(NETWORK_ALERT_NOTIFICATION_ID)
+            networkAlertPending = false
+        } catch (e: Exception) {
+            Log.printStackTrace(e)
+        }
+    }
+
+    private fun sendAlertNotification(
+        title: String?,
+        content: String?,
+        notificationId: Int = ALERT_NOTIFICATION_ID,
+    ) {
         try {
             val ctx = context
             if (ctx == null) {
@@ -508,7 +538,7 @@ object Notify {
                 .setAutoCancel(true)
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
 
-            NotificationManagerCompat.from(ctx).notify(ALERT_NOTIFICATION_ID, alertBuilder.build())
+            NotificationManagerCompat.from(ctx).notify(notificationId, alertBuilder.build())
         } catch (e: Exception) {
             Log.printStackTrace(e)
         }

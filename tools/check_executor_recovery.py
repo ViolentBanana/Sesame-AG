@@ -13,8 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 CACHE = Path(os.environ.get('GRADLE_USER_HOME', Path.home() / '.gradle')) / 'caches/modules-2/files-2.1'
 source = (ROOT / 'app/src/main/java/io/github/aoguai/sesameag/hook/ApplicationHook.kt').read_text()
 recovery = source.split('        private fun ensureRootAccessForWorkflow(', 1)[1].split('        private fun ensureLegalAcceptanceForWorkflow()', 1)[0]
+request = source.split('        private val executionRecoveryRequested', 1)[1].split('        private fun ensureRootAccessForWorkflow(', 1)[0]
 code = r'''
 import kotlinx.coroutines.*
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.delay as realDelay
 
 val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -38,6 +40,7 @@ object CommandUtil {
     var connected = false
     var alwaysFail = false
     var authorized = true
+    var readinessFailures = 0
     suspend fun awaitServiceStatus(context: Any): ServiceStatus {
         attempts++
         if (alwaysFail || attempts == 1) return ServiceStatus.Error("bind_false")
@@ -47,7 +50,7 @@ object CommandUtil {
 }
 object WorkflowRootGuard {
     fun hasGrantedRoot() = true
-    fun isExecutionAllowed() = Config.accepted && CommandUtil.connected && CommandUtil.authorized
+    fun isExecutionAllowed() = Config.accepted && CommandUtil.connected && CommandUtil.authorized && CommandUtil.readinessFailures-- <= 0
     suspend fun hasRoot(forceRefresh: Boolean, reason: String) = true
 }
 object AccountSessionCoordinator {
@@ -60,7 +63,7 @@ object ApplicationHookConstants {
     var offline = false
     fun isOffline() = offline
     fun clearPendingTriggers(reason: String) {}
-    fun submitEntry(reason: String, block: () -> Unit) { block() }
+    fun submitEntry(reason: String, block: () -> Unit): Job { block(); return Job().apply { complete() } }
 }
 object ApplicationHookCore { var dispatches = 0; fun dispatchIfNeeded() { dispatches++ } }
 enum class PersistentReconcileMode { FIRE_ALARM_DUE }
@@ -85,6 +88,7 @@ object Hook {
         return true
     }
     fun start() = ensureRootAccessForWorkflow("onResume")
+    private val executionRecoveryRequested''' + request + r'''
     private fun ensureRootAccessForWorkflow(''' + recovery + r'''
 }
 suspend fun settle() {
@@ -95,7 +99,7 @@ fun reset() {
     Hook.currentUid = "test-account"
     Config.accepted = true
     CommandUtil.attempts = 0; CommandUtil.connected = false; CommandUtil.alwaysFail = false
-    CommandUtil.authorized = true
+    CommandUtil.authorized = true; CommandUtil.readinessFailures = 0
     ApplicationHookConstants.offline = false
     ApplicationHookCore.dispatches = 0
 }
@@ -108,8 +112,16 @@ fun main() = runBlocking {
     Hook.start(); settle()
     check(Hook.initialized == 0) { "Reconnecting an initialized workflow restarted its tasks" }
     check(ApplicationHookCore.dispatches == 1) { "Queued execution was not resumed" }
-    reset(); CommandUtil.authorized = false
+    reset(); Hook.init = true; CommandUtil.readinessFailures = 3
     Hook.start(); settle()
+    check(ApplicationHookCore.dispatches == 1) { "Active executor with delayed prerequisites left workflow blocked" }
+    reset(); Hook.init = true; CommandUtil.connected = true
+    Hook.requestExecutionServiceRecovery(); settle()
+    check(ApplicationHookCore.dispatches == 1) { "Binder reconnected before queued recovery; workflow stayed blocked" }
+    reset(); CommandUtil.authorized = false
+    Hook.start(); realDelay(60)
+    check(Hook.initialized == 0 && ApplicationHookCore.dispatches == 0) { "Permission denial was bypassed" }
+    Config.accepted = false; settle()
     check(Hook.initialized == 0) { "Service permission denial was bypassed" }
     reset(); CommandUtil.alwaysFail = true
     Hook.start(); realDelay(2); Config.accepted = false; settle()

@@ -1482,8 +1482,11 @@ class ApplicationHook {
             ) return
             ApplicationHookConstants.submitEntry("execution_service_recovery") {
                 try {
-                    if (!CommandUtil.isServiceConnected()) {
-                        ensureRootAccessForWorkflow("execution_service_recovery")
+                    if (ensureRootAccessForWorkflow("execution_service_recovery") && init) {
+                        appContext?.let {
+                            UnifiedScheduler.reconcilePersistentSchedules(it, PersistentReconcileMode.FIRE_ALARM_DUE)
+                        }
+                        ApplicationHookCore.dispatchIfNeeded()
                     }
                 } finally {
                     executionRecoveryRequested.set(false)
@@ -1521,28 +1524,22 @@ class ApplicationHook {
             execute {
                 try {
                     val context = appContext ?: return@execute
-                    var executorStatus: CommandUtil.ServiceStatus
+                    if (!WorkflowRootGuard.hasRoot(forceRefresh = true, reason = reason)) {
+                        AccountSessionCoordinator.refreshWorkflowState(context, "root_denied")
+                        return@execute
+                    }
                     while (true) {
                         if (!isRecoveryCurrent()) return@execute
-                        executorStatus = CommandUtil.awaitServiceStatus(context)
-                        if (executorStatus !is CommandUtil.ServiceStatus.Loading &&
-                            executorStatus !is CommandUtil.ServiceStatus.Error
+                        val executorStatus = CommandUtil.awaitServiceStatus(context)
+                        if (!isRecoveryCurrent()) return@execute
+                        if (executorStatus is CommandUtil.ServiceStatus.Active &&
+                            WorkflowRootGuard.isExecutionAllowed()
                         ) break
-                        record(TAG, "⏳ 执行服务连接未就绪，15秒后自动重试: $reason")
-                        updateRunningStatus("执行服务连接未就绪，等待自动重连")
+                        // 执行器就绪不代表 LSPosed 作用域和跨进程协议读取已就绪。
+                        AccountSessionCoordinator.refreshWorkflowState(context, "execution_prerequisites_waiting")
+                        record(TAG, "⏳ 执行条件未就绪，15秒后重新检查: $reason executor=${executorStatus.javaClass.simpleName}")
+                        updateRunningStatus("执行条件未就绪，等待权限或服务恢复")
                         delay(15_000L)
-                    }
-                    if (!isRecoveryCurrent()) return@execute
-                    val granted = WorkflowRootGuard.hasRoot(forceRefresh = true, reason = reason) &&
-                        executorStatus is CommandUtil.ServiceStatus.Active &&
-                        WorkflowRootGuard.isExecutionAllowed()
-                    if (!granted) {
-                        Log.w(TAG, "execution_prerequisites_missing: trigger=$reason executor=${executorStatus.javaClass.simpleName} " +
-                            "account=${currentUid?.let(AccountSlotRegistry::shortHash) ?: "unknown"}")
-                        updateRunningStatus("必需权限或使用协议未就绪，已禁止工作流")
-                        ApplicationHookConstants.clearPendingTriggers("root_denied")
-                        AccountSessionCoordinator.refreshWorkflowState(appContext, "root_denied")
-                        return@execute
                     }
 
                     ApplicationHookConstants.submitEntry("execution_permission_ready") {

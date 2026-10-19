@@ -36,7 +36,10 @@ object WorkflowRootGuard {
             ApplicationHook.requestExecutionServiceRecovery()
             return false
         }
-        return AccountSlotRegistry.isExecutableUser(userId) && CommandUtil.isExecutionAllowed(userId)
+        if (!AccountSlotRegistry.isExecutableUser(userId)) return false
+        val allowed = CommandUtil.isExecutionAllowed(userId)
+        if (!allowed) ApplicationHook.requestExecutionServiceRecovery()
+        return allowed
     }
 
     fun hasGrantedRoot(): Boolean = resolveHookAccessSource() != null || lastGranted

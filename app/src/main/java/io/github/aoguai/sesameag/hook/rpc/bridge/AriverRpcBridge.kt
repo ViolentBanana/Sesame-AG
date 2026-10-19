@@ -609,6 +609,7 @@ class AriverRpcBridge : RpcBridge {
                     }
 
                     if (!rpcEntity.hasError) {
+                        Notify.clearNetworkAlert()
                         maxErrorCount.set(0)
                         captureSucceeded = true
                         return rpcEntity
@@ -660,7 +661,7 @@ class AriverRpcBridge : RpcBridge {
                                     BaseModel.errNotify.value == true &&
                                     shouldNotifyNow(lastErrorNotifyAtMs, errorNotifyIntervalMs)
                                 ) {
-                                    Notify.sendAlert(
+                                    Notify.sendNetworkAlert(
                                         "${TimeUtil.getTimeStr()} | 网络异常: $methodName",
                                         response,
                                     )
